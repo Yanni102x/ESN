@@ -22,6 +22,8 @@ struct Settings {
   std::wstring skin = L"paper";
   bool checked_hidden = false;  // false = 删除线，true = 隐藏
   bool autostart = false;
+  std::wstring hotkey_new = L"Ctrl+Alt+N";
+  std::wstring hotkey_toggle = L"Ctrl+Alt+H";
 };
 
 class Store {

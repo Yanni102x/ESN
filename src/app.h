@@ -69,6 +69,9 @@ class App {
   void set_skin(Skin skin);
   void set_checked_hidden(bool hidden);
   void apply_autostart(bool enable);
+  bool hotkey_registered(int which) const { return hotkey_ok_[which] != 0; }
+  bool set_hotkey(int which, const Hotkey& hk);
+  void reapply_hotkeys(bool notify_failure);
   void schedule_save();
   void save_now();
 
@@ -119,6 +122,7 @@ class App {
   NoteWindow* context_note_ = nullptr;
   int context_item_ = -1;
   bool tray_added_ = false;
+  bool hotkey_ok_[2]{};
   UINT msg_activate_ = 0;
   UINT msg_taskbar_created_ = 0;
 };

@@ -24,6 +24,10 @@ constexpr int kIdSkinSystem = 203;
 constexpr int kIdCheckStrike = 210;
 constexpr int kIdCheckHide = 211;
 constexpr int kIdAutostart = 220;
+constexpr int kIdHotkeyNew = 240;
+constexpr int kIdHotkeyToggle = 241;
+constexpr int kIdHotkeyNewText = 250;
+constexpr int kIdHotkeyToggleText = 251;
 constexpr int kIdOpenDir = 230;
 constexpr int kIdClose = 231;
 constexpr int kDwmCornerRound = 2;
@@ -117,6 +121,141 @@ void sync_controls(HWND hwnd) {
                    store.settings.checked_hidden ? kIdCheckHide : kIdCheckStrike);
   SendDlgItemMessageW(hwnd, kIdAutostart, BM_SETCHECK,
                       store.settings.autostart ? BST_CHECKED : BST_UNCHECKED, 0);
+
+  auto combo_text = [&](const std::wstring& text, bool ok) {
+    std::wstring out = format_hotkey(parse_hotkey(text));
+    if (!ok) out += L"（已被占用）";
+    return out;
+  };
+  SetDlgItemTextW(hwnd, kIdHotkeyNewText,
+                  combo_text(store.settings.hotkey_new, App::get().hotkey_registered(0)).c_str());
+  SetDlgItemTextW(
+      hwnd, kIdHotkeyToggleText,
+      combo_text(store.settings.hotkey_toggle, App::get().hotkey_registered(1)).c_str());
+}
+
+// ---------- 快捷键捕获窗 ----------
+struct CaptureState {
+  bool done = false;
+  bool ok = false;
+  Hotkey hk;
+};
+
+LRESULT CALLBACK capture_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  auto* st = reinterpret_cast<CaptureState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  switch (msg) {
+    case WM_NCCREATE: {
+      auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);
+      SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+      return TRUE;
+    }
+    case WM_PAINT: {
+      PAINTSTRUCT ps;
+      HDC dc = BeginPaint(hwnd, &ps);
+      RECT rc;
+      GetClientRect(hwnd, &rc);
+      const auto& palette = App::get().palette();
+      HBRUSH b = CreateSolidBrush(to_ref(palette.bg));
+      FillRect(dc, &rc, b);
+      DeleteObject(b);
+      SetBkMode(dc, TRANSPARENT);
+      SetTextColor(dc, to_ref(palette.text));
+      RECT title{0, 26, rc.right, 56};
+      DrawTextW(dc, L"按下新的快捷键", -1, &title, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+      SetTextColor(dc, to_ref(palette.muted));
+      RECT hint{0, 62, rc.right, 90};
+      DrawTextW(dc, L"至少包含 Ctrl / Alt / Shift / Win；Esc 取消", -1, &hint,
+                DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+      HPEN pen = CreatePen(PS_SOLID, 1, to_ref(palette.line));
+      HGDIOBJ old = SelectObject(dc, pen);
+      HGDIOBJ ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+      Rectangle(dc, 0, 0, rc.right, rc.bottom);
+      SelectObject(dc, ob);
+      SelectObject(dc, old);
+      DeleteObject(pen);
+      EndPaint(hwnd, &ps);
+      return 0;
+    }
+    case WM_ERASEBKGND:
+      return 1;
+    case WM_SYSKEYDOWN:
+    case WM_KEYDOWN: {
+      if (!st) break;
+      const UINT vk = UINT(wp);
+      if (vk == VK_CONTROL || vk == VK_SHIFT || vk == VK_MENU || vk == VK_LWIN ||
+          vk == VK_RWIN) {
+        return 0;
+      }
+      if (vk == VK_ESCAPE) {
+        st->done = true;
+        st->ok = false;
+        return 0;
+      }
+      UINT mods = 0;
+      if (GetKeyState(VK_CONTROL) & 0x8000) mods |= MOD_CONTROL;
+      if (GetKeyState(VK_SHIFT) & 0x8000) mods |= MOD_SHIFT;
+      if (GetKeyState(VK_MENU) & 0x8000) mods |= MOD_ALT;
+      if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000)) mods |= MOD_WIN;
+      if (mods == 0) return 0;
+      st->hk.mods = mods;
+      st->hk.vk = vk;
+      st->hk.valid = true;
+      st->done = true;
+      st->ok = true;
+      return 0;
+    }
+    case WM_KILLFOCUS:
+      if (st && !st->done) {
+        st->done = true;
+        st->ok = false;
+      }
+      return 0;
+    default:
+      break;
+  }
+  return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+Hotkey capture_hotkey(HWND owner) {
+  static bool registered = false;
+  if (!registered) {
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = capture_proc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.lpszClassName = L"ESN.HotkeyCapture";
+    registered = RegisterClassW(&wc) != 0;
+    if (!registered) return {};
+  }
+
+  CaptureState st;
+  const int dpi = int(GetDpiForWindow(owner));
+  const int w = MulDiv(400, dpi, 96);
+  const int h = MulDiv(120, dpi, 96);
+  RECT anchor{};
+  GetWindowRect(owner, &anchor);
+  const int x = (anchor.left + anchor.right) / 2 - w / 2;
+  const int y = (anchor.top + anchor.bottom) / 2 - h / 2;
+  HWND hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"ESN.HotkeyCapture", L"",
+                              WS_POPUP, x, y, w, h, owner, nullptr, GetModuleHandleW(nullptr),
+                              &st);
+  if (!hwnd) return {};
+  ShowWindow(hwnd, SW_SHOW);
+  SetForegroundWindow(hwnd);
+  SetFocus(hwnd);
+
+  MSG msg{};
+  while (!st.done) {
+    const BOOL got = GetMessageW(&msg, nullptr, 0, 0);
+    if (got <= 0) {
+      PostQuitMessage(int(msg.wParam));
+      break;
+    }
+    TranslateMessage(&msg);
+    DispatchMessageW(&msg);
+  }
+  DestroyWindow(hwnd);
+  return st.ok ? st.hk : Hotkey{};
 }
 
 void create_controls(HWND hwnd, State* st) {
@@ -156,11 +295,17 @@ void create_controls(HWND hwnd, State* st) {
 
   add(L"BUTTON", L"开机启动", BS_AUTOCHECKBOX | WS_GROUP, 20, 206, 160, 24, kIdAutostart);
 
-  add(L"STATIC", L"数据", SS_LEFT, 20, 244, 120, 20, 0);
-  add(L"BUTTON", L"打开数据目录", BS_PUSHBUTTON | WS_GROUP, 20, 266, 148, 32, kIdOpenDir);
+  add(L"STATIC", L"全局快捷键", SS_LEFT, 20, 244, 160, 20, 0);
+  add(L"STATIC", L"", SS_LEFT, 20, 270, 170, 24, kIdHotkeyNewText);
+  add(L"BUTTON", L"修改", BS_PUSHBUTTON, 200, 268, 64, 26, kIdHotkeyNew);
+  add(L"STATIC", L"", SS_LEFT, 20, 302, 170, 24, kIdHotkeyToggleText);
+  add(L"BUTTON", L"修改", BS_PUSHBUTTON, 200, 300, 64, 26, kIdHotkeyToggle);
 
-  add(L"STATIC", L"ESN 1.0.0 · Electronic Sticky Note", SS_LEFT, 20, 316, 300, 20, 0);
-  add(L"BUTTON", L"关闭", BS_PUSHBUTTON, 344, 312, 96, 32, kIdClose);
+  add(L"STATIC", L"数据", SS_LEFT, 20, 340, 120, 20, 0);
+  add(L"BUTTON", L"打开数据目录", BS_PUSHBUTTON | WS_GROUP, 20, 362, 148, 32, kIdOpenDir);
+
+  add(L"STATIC", L"ESN 1.0.0 · Electronic Sticky Note", SS_LEFT, 20, 412, 300, 20, 0);
+  add(L"BUTTON", L"关闭", BS_PUSHBUTTON, 344, 408, 96, 32, kIdClose);
 
   apply_dark_theme(hwnd, App::get().palette().dark);
   sync_controls(hwnd);
@@ -226,6 +371,17 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
           ShellExecuteW(hwnd, L"open", app.store().data_dir().c_str(), nullptr, nullptr,
                         SW_SHOWNORMAL);
           break;
+        case kIdHotkeyNew:
+        case kIdHotkeyToggle: {
+          const int which = id == kIdHotkeyNew ? 0 : 1;
+          const Hotkey hk = capture_hotkey(hwnd);
+          if (hk.valid && !app.set_hotkey(which, hk)) {
+            MessageBoxW(hwnd, L"这个组合已被其他程序占用，换一个试试。", L"ESN",
+                        MB_OK | MB_ICONINFORMATION);
+          }
+          sync_controls(hwnd);
+          break;
+        }
         case kIdClose:
           ShowWindow(hwnd, SW_HIDE);
           break;
@@ -292,7 +448,7 @@ void show_settings(HWND owner) {
   MONITORINFO mi{sizeof(mi)};
   GetMonitorInfoW(MonitorFromRect(&anchor, MONITOR_DEFAULTTONEAREST), &mi);
   const int w = S(460);
-  const int h = S(372);
+  const int h = S(460);
   int x = (anchor.left + anchor.right) / 2 - w / 2;
   int y = (anchor.top + anchor.bottom) / 2 - h / 2;
   x = std::clamp(x, int(mi.rcWork.left), int(mi.rcWork.right) - w);

@@ -49,6 +49,15 @@ inline D2D1_RECT_F to_d2d(const RECT& r) {
 
 std::wstring format_uint(unsigned long long value);
 
+// 全局热键
+struct Hotkey {
+  UINT mods = 0;   // MOD_CONTROL / MOD_ALT / MOD_SHIFT / MOD_WIN
+  UINT vk = 0;
+  bool valid = false;
+};
+Hotkey parse_hotkey(const std::wstring& text);
+std::wstring format_hotkey(const Hotkey& hk);
+
 // Unix 毫秒时间戳
 long long now_ms();
 long long tomorrow_nine_ms();

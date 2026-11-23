@@ -185,3 +185,88 @@ std::wstring format_clock(long long ms) {
   swprintf_s(buf, L"%02d:%02d", st.wHour, st.wMinute);
   return buf;
 }
+
+namespace {
+const struct {
+  const wchar_t* name;
+  UINT vk;
+} kKeyNames[] = {
+    {L"Space", VK_SPACE},     {L"Enter", VK_RETURN},   {L"Tab", VK_TAB},
+    {L"Esc", VK_ESCAPE},      {L"Left", VK_LEFT},      {L"Right", VK_RIGHT},
+    {L"Up", VK_UP},           {L"Down", VK_DOWN},      {L"Home", VK_HOME},
+    {L"End", VK_END},         {L"PageUp", VK_PRIOR},   {L"PageDown", VK_NEXT},
+    {L"Insert", VK_INSERT},   {L"Delete", VK_DELETE},
+};
+}
+
+Hotkey parse_hotkey(const std::wstring& text) {
+  Hotkey hk;
+  std::vector<std::wstring> parts;
+  std::wstring token;
+  for (wchar_t c : text) {
+    if (c == L'+' ) {
+      parts.push_back(token);
+      token.clear();
+    } else if (c != L' ') {
+      token.push_back(c);
+    }
+  }
+  parts.push_back(token);
+  if (parts.empty()) return hk;
+
+  for (size_t i = 0; i + 1 < parts.size(); ++i) {
+    std::wstring t = parts[i];
+    for (auto& ch : t) ch = wchar_t(towupper(ch));
+    if (t == L"CTRL" || t == L"CONTROL") hk.mods |= MOD_CONTROL;
+    else if (t == L"ALT") hk.mods |= MOD_ALT;
+    else if (t == L"SHIFT") hk.mods |= MOD_SHIFT;
+    else if (t == L"WIN") hk.mods |= MOD_WIN;
+    else return hk;
+  }
+
+  std::wstring key = parts.back();
+  if (key.size() == 1) {
+    wchar_t c = wchar_t(towupper(key[0]));
+    if ((c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9')) hk.vk = c;
+  } else if (key.size() >= 2 && (key[0] == L'F' || key[0] == L'f')) {
+    const int n = _wtoi(key.c_str() + 1);
+    if (n >= 1 && n <= 24) hk.vk = VK_F1 + n - 1;
+  }
+  if (!hk.vk) {
+    for (const auto& entry : kKeyNames) {
+      if (_wcsicmp(key.c_str(), entry.name) == 0) {
+        hk.vk = entry.vk;
+        break;
+      }
+    }
+  }
+  hk.valid = hk.vk != 0 && hk.mods != 0;
+  return hk;
+}
+
+std::wstring format_hotkey(const Hotkey& hk) {
+  if (!hk.valid) return {};
+  std::wstring out;
+  auto add = [&](const wchar_t* name) {
+    if (!out.empty()) out += L'+';
+    out += name;
+  };
+  if (hk.mods & MOD_CONTROL) add(L"Ctrl");
+  if (hk.mods & MOD_ALT) add(L"Alt");
+  if (hk.mods & MOD_SHIFT) add(L"Shift");
+  if (hk.mods & MOD_WIN) add(L"Win");
+
+  for (const auto& entry : kKeyNames) {
+    if (hk.vk == entry.vk) {
+      add(entry.name);
+      return out;
+    }
+  }
+  if (hk.vk >= VK_F1 && hk.vk <= VK_F24) {
+    add((L"F" + std::to_wstring(hk.vk - VK_F1 + 1)).c_str());
+  } else if (hk.vk < 128) {
+    wchar_t buf[2]{wchar_t(hk.vk), 0};
+    add(buf);
+  }
+  return out;
+}

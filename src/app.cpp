@@ -75,8 +75,7 @@ bool App::init(HINSTANCE hinst) {
       LoadImageW(hinst_, MAKEINTRESOURCEW(101), IMAGE_ICON, cx * 2, cy * 2, LR_DEFAULTCOLOR));
 
   add_tray_icon();
-  RegisterHotKey(main_, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'N');
-  RegisterHotKey(main_, 2, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'H');
+  reapply_hotkeys(true);
 
   for (auto& note : store_.notes) {
     auto window = std::make_unique<NoteWindow>(note.get());
@@ -219,6 +218,45 @@ bool App::read_autostart() {
                                        reinterpret_cast<LPBYTE>(data), &size) == ERROR_SUCCESS;
   RegCloseKey(key);
   return exists;
+}
+
+void App::reapply_hotkeys(bool notify_failure) {
+  UnregisterHotKey(main_, 1);
+  UnregisterHotKey(main_, 2);
+  const Hotkey first = parse_hotkey(store_.settings.hotkey_new);
+  const Hotkey second = parse_hotkey(store_.settings.hotkey_toggle);
+  hotkey_ok_[0] = first.valid != 0 && RegisterHotKey(main_, 1, first.mods | MOD_NOREPEAT, first.vk);
+  hotkey_ok_[1] = second.valid != 0 && RegisterHotKey(main_, 2, second.mods | MOD_NOREPEAT, second.vk);
+  if (!notify_failure) return;
+  std::wstring failed;
+  if (!hotkey_ok_[0]) failed += format_hotkey(first);
+  if (!hotkey_ok_[1]) {
+    if (!failed.empty()) failed += L"、";
+    failed += format_hotkey(second);
+  }
+  if (!failed.empty()) {
+    notify(L"ESN", L"全局热键 " + failed + L" 已被其他程序占用，可在设置里更换。");
+  }
+}
+
+bool App::set_hotkey(int which, const Hotkey& hk) {
+  if (which < 0 || which > 1 || !hk.valid) return false;
+  const int id = which == 0 ? 1 : 2;
+  const std::wstring old = which == 0 ? store_.settings.hotkey_new : store_.settings.hotkey_toggle;
+  UnregisterHotKey(main_, id);
+  if (!RegisterHotKey(main_, id, hk.mods | MOD_NOREPEAT, hk.vk)) {
+    const Hotkey previous = parse_hotkey(old);
+    if (previous.valid) {
+      RegisterHotKey(main_, id, previous.mods | MOD_NOREPEAT, previous.vk);
+    }
+    hotkey_ok_[which] = previous.valid;
+    return false;
+  }
+  hotkey_ok_[which] = true;
+  if (which == 0) store_.settings.hotkey_new = format_hotkey(hk);
+  else store_.settings.hotkey_toggle = format_hotkey(hk);
+  schedule_save();
+  return true;
 }
 
 void App::apply_autostart(bool enable) {

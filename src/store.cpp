@@ -188,6 +188,8 @@ bool Store::parse(const char* json, size_t size) {
       }
       loaded.checked_hidden = get_str(s, "checked", L"strike") == L"hide";
       loaded.autostart = get_bool(s, "autostart", false);
+      loaded.hotkey_new = get_str(s, "hotkeyNew", L"Ctrl+Alt+N");
+      loaded.hotkey_toggle = get_str(s, "hotkeyToggle", L"Ctrl+Alt+H");
     }
     settings = loaded;
 
@@ -252,6 +254,8 @@ bool Store::save() {
   yyjson_mut_obj_add_strcpy(doc, s, "skin", narrow(settings.skin).c_str());
   yyjson_mut_obj_add_strcpy(doc, s, "checked", settings.checked_hidden ? "hide" : "strike");
   yyjson_mut_obj_add_bool(doc, s, "autostart", settings.autostart);
+  yyjson_mut_obj_add_strcpy(doc, s, "hotkeyNew", narrow(settings.hotkey_new).c_str());
+  yyjson_mut_obj_add_strcpy(doc, s, "hotkeyToggle", narrow(settings.hotkey_toggle).c_str());
 
   yyjson_mut_val* arr = yyjson_mut_arr(doc);
   yyjson_mut_obj_add_val(doc, root, "notes", arr);
