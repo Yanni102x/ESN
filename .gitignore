@@ -7,3 +7,5 @@ out/
 CMakeUserPresets.json
 *.pdb
 *.ilk
+compile_commands.json
+.clangd
