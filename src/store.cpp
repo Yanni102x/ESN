@@ -10,6 +10,22 @@ namespace {
 
 constexpr int kSchema = 1;
 
+std::wstring exe_directory() {
+  wchar_t path[MAX_PATH * 2]{};
+  const DWORD n = GetModuleFileNameW(nullptr, path, DWORD(std::size(path)));
+  std::wstring full(path, n);
+  const size_t slash = full.find_last_of(L'\\');
+  return slash == std::wstring::npos ? std::wstring() : full.substr(0, slash);
+}
+
+bool portable_mode() {
+  const std::wstring dir = exe_directory();
+  if (dir.empty()) return false;
+  const std::wstring flag = dir + L"\\ESN.portable";
+  const DWORD attrs = GetFileAttributesW(flag.c_str());
+  return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 std::wstring local_app_data() {
   PWSTR raw = nullptr;
   std::wstring out;
@@ -139,6 +155,8 @@ bool Store::load() {
   wchar_t override_dir[MAX_PATH]{};
   if (GetEnvironmentVariableW(L"ESN_DATA_DIR", override_dir, MAX_PATH) > 0) {
     dir_ = override_dir;
+  } else if (portable_mode()) {
+    dir_ = exe_directory() + L"\\data";  // 便携模式：数据跟着 exe 走
   } else {
     dir_ = local_app_data() + L"\\ESN";
   }

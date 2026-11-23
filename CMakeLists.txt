@@ -6,6 +6,7 @@ enable_language(RC)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/dist")
 
 # 单一静态 CRT：不依赖 vcruntime，便携即用
@@ -22,15 +23,22 @@ set(SOURCES
   src/settings_window.cpp
   src/app.cpp
   third_party/yyjson/yyjson.c
-  res/esn.rc
+  ${CMAKE_BINARY_DIR}/esn.rc
 )
+
+# 版本号单一来源：project(ESN VERSION x.y.z) → version.h + 资源文件
+set(ESN_VERSION_COMMA "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
+file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}/res/esn.ico" ESN_ICON_PATH)
+file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}/res/esn.manifest" ESN_MANIFEST_PATH)
+configure_file(res/version.h.in "${CMAKE_BINARY_DIR}/version.h" @ONLY)
+configure_file(res/esn.rc.in "${CMAKE_BINARY_DIR}/esn.rc" @ONLY)
 
 add_executable(esn WIN32 ${SOURCES})
 
 # 产物名固定大写：ESN.exe（Windows 不区分大小写，但资源管理器按写入时的大小写显示）
 set_target_properties(esn PROPERTIES OUTPUT_NAME "ESN")
 
-target_include_directories(esn PRIVATE src third_party third_party/yyjson)
+target_include_directories(esn PRIVATE src third_party third_party/yyjson ${CMAKE_BINARY_DIR})
 target_compile_definitions(esn PRIVATE
   UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
   _CRT_SECURE_NO_WARNINGS)

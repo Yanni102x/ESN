@@ -269,7 +269,7 @@ esn/
 └─ logs\              仅 Release 出问题时手动开启
 ```
 
-便携模式：若 exe 同目录存在 `esn.portable`，则数据目录改为 `.\data\`。
+便携模式：若 exe 同目录存在 `ESN.portable`，则数据目录改为 `.\data\`。
 
 ### 6.2 Schema（v1）
 
@@ -537,7 +537,15 @@ IDI_ESN ICON "esn.ico"
 
 ### 10.5 打包
 
-- 便携 zip：`ESN.exe` + `README.txt`（免安装，数据落 `%LOCALAPPDATA%`）；
+`scripts/package.ps1` 一条命令产出：
+
+- `dist/ESN-<ver>-x64-portable.zip`：exe + `ESN.portable` + LICENSE + README；
+- `dist/ESN-<ver>-x64-setup.exe`：Inno Setup（免费）按用户安装、免管理员，卸载时删 `HKCU\Run\ESN`；
+- `dist/SHA256SUMS.txt`。
+
+版本号单一来源：`project(ESN VERSION x.y.z)` → 生成的 `version.h` 与 `esn.rc`（`FILEVERSION`/`PRODUCTVERSION`），发版只改这一处。
+
+- 便携 zip：`ESN.exe` + `ESN.portable` 标记（带标记时数据落 exe 同目录 `data\`，否则 `%LOCALAPPDATA%\ESN`）；
 - 可选 Inno Setup 安装包（含自启项、卸载清理）；
 - 签名（可选）：自签名证书会触发 SmartScreen，建议首发就先放便携版，量起来再买证书。
 

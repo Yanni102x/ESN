@@ -8,6 +8,7 @@
 #include <windowsx.h>
 
 #include "app.h"
+#include "version.h"
 #include "store.h"
 
 #ifndef DWMWA_WINDOW_CORNER_PREFERENCE
@@ -304,7 +305,8 @@ void create_controls(HWND hwnd, State* st) {
   add(L"STATIC", L"数据", SS_LEFT, 20, 340, 120, 20, 0);
   add(L"BUTTON", L"打开数据目录", BS_PUSHBUTTON | WS_GROUP, 20, 362, 148, 32, kIdOpenDir);
 
-  add(L"STATIC", L"ESN 1.0.0 · Electronic Sticky Note", SS_LEFT, 20, 412, 300, 20, 0);
+  const std::wstring version_line = std::wstring(L"ESN ") + ESN_VERSION_WSTR + L" · Electronic Sticky Note";
+  add(L"STATIC", version_line.c_str(), SS_LEFT, 20, 412, 300, 20, 0);
   add(L"BUTTON", L"关闭", BS_PUSHBUTTON, 344, 408, 96, 32, kIdClose);
 
   apply_dark_theme(hwnd, App::get().palette().dark);

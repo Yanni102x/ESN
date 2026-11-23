@@ -4,6 +4,22 @@
 
 多便签 · 勾选待办 · 到点提醒 · 托盘常驻 · 四套皮肤 · 单 exe，私有内存 < 10 MiB
 
+## 下载与安装
+
+发布页提供两种包，都**没有代码签名**——Windows SmartScreen 可能提示"未知发布者"，点「更多信息 → 仍要运行」即可。
+
+- **便携版** `ESN-1.0.0-x64-portable.zip`：解压到任意目录，双击 `ESN.exe`。包里带 `ESN.portable` 标记，**有它时数据写在 exe 同目录的 `data\`**，整个文件夹放 U 盘就能带走。
+- **安装版** `ESN-1.0.0-x64-setup.exe`：按用户装到 `%LOCALAPPDATA%\Programs\ESN`，不需要管理员权限；卸载时会清掉开机启动项，用户数据默认保留。
+
+数据位置：
+
+| 模式 | 数据目录 |
+| --- | --- |
+| 便携（exe 同目录有 `ESN.portable`） | `<exe 目录>\data\data.json` |
+| 普通 | `%LOCALAPPDATA%\ESN\data.json` |
+
+校验：下载目录里的 `SHA256SUMS.txt`。
+
 ## 提醒怎么用
 
 点条目右侧的 `◷` 时钟图标（新建条目时它就在编辑框右边），选 10 / 30 / 60 分钟后、明天 9:00，或「自定义…」挑具体日期和时间；右键「提醒我」「Ctrl+Shift+R」是同一入口。设置后行尾显示 `HH:mm`（过期变红）。
@@ -75,7 +91,8 @@ src/
   store.{h,cpp}      JSON 读写、原子替换、容量上限
   common.{h,cpp}     字符串/DPI/调色板/日志
 res/                 图标（esn.ico / SVG 源）、manifest、版本信息
-scripts/             构建与内存测量
+scripts/             构建、打包（package.ps1）、内存测量
+installer/           Inno Setup 安装脚本
 docs/ESN-方案.md   完整方案（含 M0 实测记录）
 third_party/yyjson/  唯一的第三方依赖（MIT）
 ```
