@@ -6,6 +6,8 @@
 
 ## 下载与安装
 
+最新版本：[Releases](https://github.com/Yanni102x/ESN/releases/latest)
+
 发布页提供两种包，都**没有代码签名**——Windows SmartScreen 可能提示"未知发布者"，点「更多信息 → 仍要运行」即可。
 
 - **便携版** `ESN-1.0.0-x64-portable.zip`：解压到任意目录，双击 `ESN.exe`。包里带 `ESN.portable` 标记，**有它时数据写在 exe 同目录的 `data\`**，整个文件夹放 U 盘就能带走。
