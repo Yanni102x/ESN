@@ -1,0 +1,33 @@
+#pragma code_page(65001)
+
+#define CREATEPROCESS_MANIFEST_RESOURCE_ID 1
+#define RT_MANIFEST 24
+
+101 ICON "esn.ico"
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "esn.manifest"
+
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEOS 0x40004L
+FILETYPE 0x1L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName",      "ESN"
+      VALUE "FileDescription",  "ESN"
+      VALUE "FileVersion",      "1.0.0.0"
+      VALUE "InternalName",     "ESN"
+      VALUE "LegalCopyright",   "MIT License"
+      VALUE "OriginalFilename", "ESN.exe"
+      VALUE "ProductName",      "ESN"
+      VALUE "ProductVersion",   "1.0.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

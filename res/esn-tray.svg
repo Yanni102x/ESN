@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" aria-label="ESN tray">
+  <title>ESN 托盘图标（单色）</title>
+  <defs>
+    <mask id="cut">
+      <rect width="512" height="512" fill="#fff"/>
+      <path d="M132 312 L188 368 L356 168" fill="none" stroke="#000" stroke-width="58"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <rect x="64" y="64" width="384" height="384" rx="96" fill="currentColor" mask="url(#cut)"/>
+</svg>
