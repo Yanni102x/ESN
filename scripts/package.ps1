@@ -35,6 +35,7 @@ Write-Host "portable: $zip" -ForegroundColor Green
 
 $iscc = $null
 foreach ($p in @(
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
     "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
     (Get-Command iscc.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source))) {
