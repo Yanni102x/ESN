@@ -474,6 +474,34 @@ void NoteWindow::on_mouse_move(int x, int y) {
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     return;
   }
+  if (drag_item_ >= 0) {
+    if (!(GetKeyState(VK_LBUTTON) & 0x8000)) {
+      drag_item_ = -1;
+      drag_active_ = false;
+      drop_index_ = -1;
+    } else {
+      const int dy = y > drag_start_y_ ? y - drag_start_y_ : drag_start_y_ - y;
+      if (!drag_active_ && dy > S(5)) drag_active_ = true;
+      if (drag_active_) {
+        const auto rows = visible_items();
+        if (rows.empty()) {
+          drop_index_ = int(note_->items.size());
+          drop_y_ = list_top();
+        } else {
+          const int rel = y - list_top() - S(6) + scroll_;
+          int row = rel / row_h();
+          if (row < 0) row = 0;
+          if (row >= int(rows.size())) row = int(rows.size()) - 1;
+          const int top = list_top() + S(6) + row * row_h() - scroll_;
+          const bool after = (y - top) > row_h() / 2;
+          drop_index_ = rows[size_t(row)] + (after ? 1 : 0);
+          drop_y_ = after ? top + row_h() : top;
+        }
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return;
+      }
+    }
+  }
   if (!tracking_leave_) {
     TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, hwnd_, 0};
     TrackMouseEvent(&tme);
@@ -565,6 +593,10 @@ void NoteWindow::on_lbutton_down(int x, int y) {
   if (PtInRect(&box, pt)) {
     toggle_item(index);
   } else {
+    drag_item_ = index;
+    drag_start_y_ = y;
+    drag_active_ = false;
+    drop_index_ = -1;
     InvalidateRect(hwnd_, nullptr, FALSE);
   }
 }
@@ -601,6 +633,17 @@ void NoteWindow::on_resize_move(int x, int y) {
 }
 
 void NoteWindow::on_lbutton_up() {
+  if (drag_active_) {
+    const int from = drag_item_;
+    const int to = drop_index_;
+    drag_item_ = -1;
+    drag_active_ = false;
+    drop_index_ = -1;
+    if (from >= 0 && to >= 0) move_item(from, to);
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    return;
+  }
+  drag_item_ = -1;
   if (resizing_) {
     resizing_ = false;
     ReleaseCapture();
@@ -648,6 +691,12 @@ void NoteWindow::on_wheel(int delta) {
 }
 
 void NoteWindow::on_key_down(WPARAM key) {
+  const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+  if (ctrl && (key == 'Z' || key == 'Y')) {
+    if (key == 'Z') undo();
+    else redo();
+    return;
+  }
   if (key == VK_F2) {
     begin_rename();
     return;
@@ -910,6 +959,13 @@ void NoteWindow::paint_rows(ID2D1RenderTarget* rt) {
       }
     }
   }
+  if (drag_active_ && drop_index_ >= 0) {
+    const float y = float(drop_y_);
+    rt->DrawLine(D2D1::Point2F(float(pad()), y), D2D1::Point2F(float(width_ - pad()), y),
+                 brush(6), 2.2f * float(dpi_) / 96.0f, stroke_round_.Get());
+    rt->FillEllipse(D2D1::Ellipse(D2D1::Point2F(float(pad()), y), float(S(3)), float(S(3))),
+                    brush(6));
+  }
   rt->PopAxisAlignedClip();
 
   // 限制 layout 缓存：滚动过大量条目后，把不在视口内的布局丢掉，避免缓存无上限增长
@@ -957,11 +1013,142 @@ void NoteWindow::paint_footer(ID2D1RenderTarget* rt) {
   }
 }
 
+int NoteWindow::item_index_of(const std::wstring& id) const {
+  for (int i = 0; i < int(note_->items.size()); ++i) {
+    if (note_->items[size_t(i)].id == id) return i;
+  }
+  return -1;
+}
+
+void NoteWindow::push_undo(UndoOp op) {
+  undo_.push_back(std::move(op));
+  if (undo_.size() > 50) undo_.erase(undo_.begin());
+  redo_.clear();
+}
+
+void NoteWindow::move_item(int from, int to) {
+  if (from < 0 || from >= int(note_->items.size())) return;
+  const int insert = std::clamp(to > from ? to - 1 : to, 0, int(note_->items.size()) - 1);
+  if (insert == from) return;
+  Item item = std::move(note_->items[size_t(from)]);
+  note_->items.erase(note_->items.begin() + from);
+  note_->items.insert(note_->items.begin() + insert, std::move(item));
+  UndoOp op;
+  op.kind = UndoOp::Kind::Move;
+  op.item_id = note_->items[size_t(insert)].id;
+  op.index = from;
+  op.to_index = insert;
+  push_undo(std::move(op));
+  selected_ = insert;
+  App::get().schedule_save();
+}
+
+void NoteWindow::undo() {
+  if (undo_.empty()) return;
+  UndoOp op = std::move(undo_.back());
+  undo_.pop_back();
+  switch (op.kind) {
+    case UndoOp::Kind::Toggle: {
+      const int i = item_index_of(op.item_id);
+      if (i >= 0) note_->items[size_t(i)].done = op.before_done;
+      break;
+    }
+    case UndoOp::Kind::EditText: {
+      const int i = item_index_of(op.item_id);
+      if (i >= 0) note_->items[size_t(i)].text = op.before;
+      break;
+    }
+    case UndoOp::Kind::Delete:
+      note_->items.insert(note_->items.begin() + std::clamp(op.index, 0, int(note_->items.size())),
+                          op.removed);
+      break;
+    case UndoOp::Kind::Add: {
+      const int i = item_index_of(op.item_id);
+      if (i >= 0) note_->items.erase(note_->items.begin() + i);
+      break;
+    }
+    case UndoOp::Kind::Move: {
+      const int from = item_index_of(op.item_id);
+      if (from >= 0) {
+        Item item = std::move(note_->items[size_t(from)]);
+        note_->items.erase(note_->items.begin() + from);
+        const int insert = std::clamp(op.index, 0, int(note_->items.size()));
+        note_->items.insert(note_->items.begin() + insert, std::move(item));
+        selected_ = insert;
+      }
+      break;
+    }
+    case UndoOp::Kind::Rename:
+      note_->name = op.before;
+      SetWindowTextW(hwnd_, note_->name.c_str());
+      break;
+  }
+  redo_.push_back(op);
+  clamp_scroll();
+  App::get().schedule_save();
+  InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void NoteWindow::redo() {
+  if (redo_.empty()) return;
+  UndoOp op = std::move(redo_.back());
+  redo_.pop_back();
+  switch (op.kind) {
+    case UndoOp::Kind::Toggle: {
+      const int i = item_index_of(op.item_id);
+      if (i >= 0) note_->items[size_t(i)].done = op.after_done;
+      break;
+    }
+    case UndoOp::Kind::EditText: {
+      const int i = item_index_of(op.item_id);
+      if (i >= 0) note_->items[size_t(i)].text = op.after;
+      break;
+    }
+    case UndoOp::Kind::Delete: {
+      const int i = item_index_of(op.item_id);
+      if (i >= 0) note_->items.erase(note_->items.begin() + i);
+      break;
+    }
+    case UndoOp::Kind::Add: {
+      Item item = op.removed;
+      item.text = op.after;
+      note_->items.insert(note_->items.begin() + std::clamp(op.index, 0, int(note_->items.size())),
+                          std::move(item));
+      break;
+    }
+    case UndoOp::Kind::Move: {
+      const int from = item_index_of(op.item_id);
+      if (from >= 0) {
+        Item item = std::move(note_->items[size_t(from)]);
+        note_->items.erase(note_->items.begin() + from);
+        const int insert = std::clamp(op.to_index, 0, int(note_->items.size()));
+        note_->items.insert(note_->items.begin() + insert, std::move(item));
+        selected_ = insert;
+      }
+      break;
+    }
+    case UndoOp::Kind::Rename:
+      note_->name = op.after;
+      SetWindowTextW(hwnd_, note_->name.c_str());
+      break;
+  }
+  undo_.push_back(op);
+  clamp_scroll();
+  App::get().schedule_save();
+  InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void NoteWindow::toggle_item(int item_index) {
   if (item_index < 0 || item_index >= int(note_->items.size())) return;
   auto& item = note_->items[size_t(item_index)];
+  UndoOp op;
+  op.kind = UndoOp::Kind::Toggle;
+  op.item_id = item.id;
+  op.before_done = item.done;
   item.done = !item.done;
+  op.after_done = item.done;
   if (item.done) item.remind = 0;  // 完成即取消提醒
+  push_undo(std::move(op));
   selected_ = item_index;
   clamp_scroll();
   App::get().schedule_save();
@@ -970,6 +1157,12 @@ void NoteWindow::toggle_item(int item_index) {
 
 void NoteWindow::remove_item(int item_index) {
   if (item_index < 0 || item_index >= int(note_->items.size())) return;
+  UndoOp op;
+  op.kind = UndoOp::Kind::Delete;
+  op.index = item_index;
+  op.removed = note_->items[size_t(item_index)];
+  op.item_id = op.removed.id;
+  push_undo(std::move(op));
   note_->items.erase(note_->items.begin() + item_index);
   selected_ = std::min(selected_, int(note_->items.size()) - 1);
   clamp_scroll();
@@ -989,10 +1182,12 @@ void NoteWindow::add_item_and_edit(int after_item) {
   const int pos = std::clamp(after_item + 1, 0, int(note_->items.size()));
   note_->items.insert(note_->items.begin() + pos, std::move(item));
   begin_edit_item(pos);
+  edit_new_item_ = true;
 }
 
 void NoteWindow::begin_edit_item(int item_index) {
   if (item_index < 0 || item_index >= int(note_->items.size())) return;
+  edit_new_item_ = false;
   ensure_edit();
   if (!edit_) return;
   if (edit_kind_ != EditKind::None) commit_edit(false);
@@ -1041,17 +1236,53 @@ void NoteWindow::commit_edit(bool chain_new) {
   std::wstring text = trim(buffer);
   const EditKind kind = edit_kind_;
   const int index = edit_item_;
+  const bool was_new = edit_new_item_;
+  edit_new_item_ = false;
   end_edit();
 
   int next_edit = -1;
   if (kind == EditKind::Name) {
-    if (!text.empty()) note_->name = clamp_text(text, Store::kMaxNameChars);
+    if (!text.empty() && text != note_->name) {
+      UndoOp op;
+      op.kind = UndoOp::Kind::Rename;
+      op.before = note_->name;
+      op.after = clamp_text(text, Store::kMaxNameChars);
+      note_->name = op.after;
+      push_undo(std::move(op));
+      SetWindowTextW(hwnd_, note_->name.c_str());
+    }
   } else if (kind == EditKind::Item) {
     const bool existed = index >= 0 && index < int(note_->items.size());
     if (text.empty()) {
-      if (existed) note_->items.erase(note_->items.begin() + index);
+      if (existed) {
+        UndoOp op;
+        op.kind = UndoOp::Kind::Delete;
+        op.index = index;
+        op.removed = note_->items[size_t(index)];
+        op.item_id = op.removed.id;
+        push_undo(std::move(op));
+        note_->items.erase(note_->items.begin() + index);
+      }
     } else if (existed) {
-      note_->items[size_t(index)].text = clamp_text(text, Store::kMaxItemChars);
+      auto& target = note_->items[size_t(index)];
+      const std::wstring clamped = clamp_text(text, Store::kMaxItemChars);
+      if (was_new) {
+        UndoOp op;
+        op.kind = UndoOp::Kind::Add;
+        op.index = index;
+        op.item_id = target.id;
+        op.after = clamped;
+        push_undo(std::move(op));
+        target.text = clamped;
+      } else if (target.text != clamped) {
+        UndoOp op;
+        op.kind = UndoOp::Kind::EditText;
+        op.item_id = target.id;
+        op.before = target.text;
+        op.after = clamped;
+        push_undo(std::move(op));
+        target.text = clamped;
+      }
       if (chain_new && int(note_->items.size()) < Store::kMaxItems) {
         Item item;
         item.id = App::get().store().new_id(L"i");
@@ -1066,7 +1297,10 @@ void NoteWindow::commit_edit(bool chain_new) {
   InvalidateRect(hwnd_, nullptr, FALSE);
   committing_ = false;
   SetFocus(hwnd_);
-  if (next_edit >= 0) begin_edit_item(next_edit);
+  if (next_edit >= 0) {
+    begin_edit_item(next_edit);
+    edit_new_item_ = true;
+  }
 }
 
 void NoteWindow::cancel_edit() {

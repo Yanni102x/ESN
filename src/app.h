@@ -19,6 +19,7 @@ enum : int {
   kCmdCheckHide,
 
   kCmdAutostart = 3030,
+  kCmdSettings = 3031,
 
   kCmdNoteRename = 3101,
   kCmdNotePin,

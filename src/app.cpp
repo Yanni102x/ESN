@@ -8,6 +8,7 @@
 
 #include "note_window.h"
 #include "reminder_picker.h"
+#include "settings_window.h"
 
 namespace {
 constexpr UINT kTrayMessage = WM_APP + 1;
@@ -556,6 +557,17 @@ void App::handle_command(int id) {
     case kCmdCheckStrike: set_checked_hidden(false); break;
     case kCmdCheckHide: set_checked_hidden(true); break;
     case kCmdAutostart: apply_autostart(!store_.settings.autostart); break;
+    case kCmdSettings: {
+      HWND target = nullptr;
+      for (auto& window : windows_) {
+        if (window->hwnd() && IsWindowVisible(window->hwnd())) {
+          target = window->hwnd();
+          break;
+        }
+      }
+      show_settings(target);
+      break;
+    }
     case kCmdNoteRename:
       if (context_note_) context_note_->begin_rename();
       break;
@@ -661,6 +673,7 @@ void App::on_tray_event(UINT event) {
       AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
       AppendMenuW(menu, MF_STRING | (store_.settings.autostart ? MF_CHECKED : 0), kCmdAutostart,
                   L"开机启动");
+      AppendMenuW(menu, MF_STRING, kCmdSettings, L"设置…");
       AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
       AppendMenuW(menu, MF_STRING, kCmdExit, L"退出");
       SetForegroundWindow(main_);

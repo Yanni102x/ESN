@@ -19,6 +19,7 @@ set(SOURCES
   src/store.cpp
   src/note_window.cpp
   src/reminder_picker.cpp
+  src/settings_window.cpp
   src/app.cpp
   third_party/yyjson/yyjson.c
   res/esn.rc

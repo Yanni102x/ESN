@@ -82,6 +82,24 @@ class NoteWindow {
   void clamp_scroll();
   void scroll_into_view(int item_index);
 
+  struct UndoOp {
+    enum class Kind { Toggle, EditText, Delete, Add, Move, Rename } kind = Kind::Toggle;
+    std::wstring item_id;
+    int index = 0;
+    int to_index = 0;
+    std::wstring before;
+    std::wstring after;
+    bool before_done = false;
+    bool after_done = false;
+    Item removed;
+  };
+  void push_undo(UndoOp op);
+  void undo();
+  void redo();
+  int item_index_of(const std::wstring& id) const;
+  void move_item(int from, int to);
+  int drop_index_at(int y) const;
+
   void toggle_item(int item_index);
   void remove_item(int item_index);
   void add_item_and_edit(int after_item);
@@ -106,6 +124,13 @@ class NoteWindow {
   bool dragging_ = false;
   POINT drag_origin_{};
   RECT drag_window_{};
+  int drag_item_ = -1;
+  int drag_start_y_ = 0;
+  bool drag_active_ = false;
+  int drop_index_ = -1;
+  int drop_y_ = 0;
+  std::vector<UndoOp> undo_, redo_;
+  bool edit_new_item_ = false;
   bool resizing_ = false;
   int resize_edge_ = 0;
   RECT resize_start_{};
